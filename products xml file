@@ -1,0 +1,34 @@
+<products>
+    <product sku="A">
+        <name>PRODUCT A</name>
+        <category>TELEVISION</category>
+        <price currency="INR">1200.00</price>
+        <features>
+            <feature>1</feature>
+            <feature>2</feature>
+            <feature>3</feature>
+        </features>
+        <stock available="true">50</stock>
+    </product>
+    <product sku="A">
+        <name>PRODUCT B</name>
+        <category>MOBILES</category>
+        <price currency="INR">120.00</price>
+        <features>
+            <feature>1</feature>
+            <feature>2</feature>
+            <feature>3</feature>
+        </features>
+        <stock available="true">50</stock>
+    </product><product sku="A">
+        <name>PRODUCT C</name>
+        <category>MICROWAVE</category>
+        <price currency="INR">1800.00</price>
+        <features>
+            <feature>1</feature>
+            <feature>2</feature>
+            <feature>3</feature>
+        </features>
+        <stock available="true">50</stock>
+    </product>
+</products>
