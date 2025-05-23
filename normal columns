@@ -1,0 +1,137 @@
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+
+public class XmlToExcelProductExample {
+
+    public static void main(String[] args) {
+        String xmlFilePath = "products.xml"; // Your XML file path
+        String excelFilePath = "products_output.xlsx"; // Desired Excel output file path
+
+        try {
+            // 1. Parse the XML data
+            File xmlFile = new File(xmlFilePath);
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc = dBuilder.parse(xmlFile);
+            doc.normalizeDocument();
+
+            System.out.println("Root element: " + doc.getDocumentElement().getNodeName());
+
+            NodeList productList = doc.getElementsByTagName("product");
+
+            // 2. Create an Excel workbook
+            Workbook workbook = new XSSFWorkbook(); // For .xlsx files
+            Sheet sheet = workbook.createSheet("Product Data");
+
+            // Create header row
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {"SKU", "Name", "Category", "Price", "Currency", "Features", "Stock Available", "Quantity"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+            }
+
+            // 3. Populate the Excel sheet with XML data
+            int rowNum = 1; // Start from the second row for data (after header)
+            for (int i = 0; i < productList.getLength(); i++) {
+                Node node = productList.item(i);
+                if (node.getNodeType() == Node.ELEMENT_NODE) {
+                    Element productElement = (Element) node;
+
+                    String sku = productElement.getAttribute("sku");
+                    String name = getTagValue("name", productElement);
+                    String category = getTagValue("category", productElement);
+
+                    // Price and Currency (from attribute)
+                    String price = "";
+                    String currency = "";
+                    NodeList priceNodes = productElement.getElementsByTagName("price");
+                    if (priceNodes.getLength() > 0) {
+                        Element priceElement = (Element) priceNodes.item(0);
+                        price = priceElement.getTextContent();
+                        currency = priceElement.getAttribute("currency");
+                    }
+
+                    // Features (multiple elements, concatenate them)
+                    List<String> featuresList = new ArrayList<>();
+                    NodeList featuresParentNode = productElement.getElementsByTagName("features");
+                    if (featuresParentNode.getLength() > 0) {
+                        Element featuresElement = (Element) featuresParentNode.item(0);
+                        NodeList featureNodes = featuresElement.getElementsByTagName("feature");
+                        for (int j = 0; j < featureNodes.getLength(); j++) {
+                            featuresList.add(featureNodes.item(j).getTextContent());
+                        }
+                    }
+                    String concatenatedFeatures = String.join("; ", featuresList);
+
+                    // Stock (attribute and value)
+                    boolean stockAvailable = false;
+                    int quantity = 0;
+                    NodeList stockNodes = productElement.getElementsByTagName("stock");
+                    if (stockNodes.getLength() > 0) {
+                        Element stockElement = (Element) stockNodes.item(0);
+                        stockAvailable = Boolean.parseBoolean(stockElement.getAttribute("available"));
+                        try {
+                            quantity = Integer.parseInt(stockElement.getTextContent());
+                        } catch (NumberFormatException e) {
+                            quantity = 0; // Default or handle error
+                        }
+                    }
+
+
+                    Row row = sheet.createRow(rowNum++);
+                    row.createCell(0).setCellValue(sku);
+                    row.createCell(1).setCellValue(name);
+                    row.createCell(2).setCellValue(category);
+                    row.createCell(3).setCellValue(Double.parseDouble(price)); // Convert price to double
+                    row.createCell(4).setCellValue(currency);
+                    row.createCell(5).setCellValue(concatenatedFeatures);
+                    row.createCell(6).setCellValue(stockAvailable);
+                    row.createCell(7).setCellValue(quantity);
+                }
+            }
+
+            // Auto-size columns for better readability
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            // 4. Save the Excel file
+            try (FileOutputStream outputStream = new FileOutputStream(excelFilePath)) {
+                workbook.write(outputStream);
+                System.out.println("Product data successfully written to Excel: " + excelFilePath);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Helper method to get tag value (same as before)
+    private static String getTagValue(String tagName, Element element) {
+        NodeList nodeList = element.getElementsByTagName(tagName);
+        if (nodeList != null && nodeList.getLength() > 0) {
+            NodeList childNodes = nodeList.item(0).getChildNodes();
+            if (childNodes != null && childNodes.getLength() > 0) {
+                Node node = childNodes.item(0);
+                if (node != null) {
+                    return node.getNodeValue();
+                }
+            }
+        }
+        return "";
+    }
+}
