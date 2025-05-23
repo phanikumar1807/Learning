@@ -1,0 +1,258 @@
+package april22;
+
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashSet; // To maintain insertion order
+import java.util.List;
+import java.util.Set;
+import java.util.Iterator; // For iterating over attributes
+
+public class XmlToExcelProductExample {
+
+    public static void main(String[] args) {
+        String xmlFilePath = "C:\\Users\\inahp\\eclipse-workspace\\ImageToExcel\\src\\main\\resources\\images\\products.xml";
+        String excelFilePath = "C:\\Users\\inahp\\eclipse-workspace\\ImageToExcel\\src\\main\\resources\\images\\products.xlsx";
+
+        try {
+            // 1. Parse the XML data
+            File xmlFile = new File(xmlFilePath);
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc = dBuilder.parse(xmlFile);
+            doc.normalizeDocument();
+
+            NodeList productList = doc.getElementsByTagName("product"); // The main repeating element
+
+            if (productList.getLength() == 0) {
+                System.out.println("No 'product' elements found in the XML. Exiting.");
+                return;
+            }
+
+            // --- Dynamic Header Extraction ---
+            Set<String> dynamicHeaders = new LinkedHashSet<>();
+
+            // Add attributes of the main 'product' tag
+            Element firstProductElement = (Element) productList.item(0);
+            if (firstProductElement.hasAttribute("sku")) {
+                dynamicHeaders.add("SKU");
+            }
+
+            // Iterate through all product elements to gather ALL possible child tags and their relevant attributes
+            for (int i = 0; i < productList.getLength(); i++) {
+                Node node = productList.item(i);
+                if (node.getNodeType() == Node.ELEMENT_NODE) {
+                    Element productElement = (Element) node;
+
+                    NodeList childNodes = productElement.getChildNodes();
+                    for (int j = 0; j < childNodes.getLength(); j++) {
+                        Node childNode = childNodes.item(j);
+                        if (childNode.getNodeType() == Node.ELEMENT_NODE) {
+                            String tagName = childNode.getNodeName();
+                            dynamicHeaders.add(tagName); // Add the tag name itself
+
+                            // Specifically handle attributes we want as separate columns
+                            Element childElement = (Element) childNode;
+                            if (tagName.equalsIgnoreCase("price") && childElement.hasAttribute("currency")) {
+                                dynamicHeaders.add("Price_Currency"); // Header for price currency
+                            }
+                            if (tagName.equalsIgnoreCase("stock") && childElement.hasAttribute("available")) {
+                                dynamicHeaders.add("Stock_Available"); // Header for stock availability
+                            }
+                            if (tagName.equalsIgnoreCase("weight") && childElement.hasAttribute("unit")) {
+                                dynamicHeaders.add("Weight_Unit"); // Header for weight unit
+                            }
+                        }
+                    }
+                }
+            }
+            // Manually re-order or consolidate certain headers if desired
+            // Example: "price" and "Price_Currency" might be combined or ordered specifically.
+            // For simplicity, we'll just use the collected order.
+
+            List<String> headerList = new ArrayList<>(dynamicHeaders);
+            // Optional: You might want to reorder headerList here for a more logical display,
+            // e.g., move "Price_Currency" right after "price" etc.
+            // Example reordering for "Price_Currency" and "Stock_Available":
+            int priceIndex = headerList.indexOf("price");
+            int priceCurrencyIndex = headerList.indexOf("Price_Currency");
+            if (priceIndex != -1 && priceCurrencyIndex != -1 && priceCurrencyIndex != priceIndex + 1) {
+                String currencyHeader = headerList.remove(priceCurrencyIndex);
+                headerList.add(priceIndex + 1, currencyHeader);
+            }
+            int stockIndex = headerList.indexOf("stock");
+            int stockAvailableIndex = headerList.indexOf("Stock_Available");
+            if (stockIndex != -1 && stockAvailableIndex != -1 && stockAvailableIndex != stockIndex + 1) {
+                String availableHeader = headerList.remove(stockAvailableIndex);
+                headerList.add(stockIndex + 1, availableHeader);
+            }
+            int weightIndex = headerList.indexOf("weight");
+            int weightUnitIndex = headerList.indexOf("Weight_Unit");
+            if (weightIndex != -1 && weightUnitIndex != -1 && weightUnitIndex != weightIndex + 1) {
+                String unitHeader = headerList.remove(weightUnitIndex);
+                headerList.add(weightIndex + 1, unitHeader);
+            }
+
+
+            System.out.println("Dynamically Extracted Headers: " + headerList);
+            // --- End Dynamic Header Extraction ---
+
+            // 2. Create an Excel workbook
+            Workbook workbook = new XSSFWorkbook();
+            Sheet sheet = workbook.createSheet("Product Data");
+
+            // Create header row dynamically
+            Row headerRow = sheet.createRow(0);
+            for (int i = 0; i < headerList.size(); i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headerList.get(i));
+            }
+
+            // 3. Populate the Excel sheet with XML data
+            int rowNum = 1;
+            for (int i = 0; i < productList.getLength(); i++) {
+                Node node = productList.item(i);
+                if (node.getNodeType() == Node.ELEMENT_NODE) {
+                    Element productElement = (Element) node;
+                    Row row = sheet.createRow(rowNum++);
+
+                    for (int colIndex = 0; colIndex < headerList.size(); colIndex++) {
+                        String header = headerList.get(colIndex);
+                        Cell cell = row.createCell(colIndex);
+
+                        // SKU (attribute of product)
+                        if (header.equalsIgnoreCase("SKU") && productElement.hasAttribute("sku")) {
+                            cell.setCellValue(productElement.getAttribute("sku"));
+                        }
+                        // Name, Category (simple tags)
+                        else if (header.equalsIgnoreCase("name")) {
+                            cell.setCellValue(getTagValue("name", productElement));
+                        } else if (header.equalsIgnoreCase("category")) {
+                            cell.setCellValue(getTagValue("category", productElement));
+                        }
+                        // Price (value of tag)
+                        else if (header.equalsIgnoreCase("price")) {
+                            String priceStr = getTagValue("price", productElement);
+                            if (!priceStr.isEmpty()) {
+                                try {
+                                    cell.setCellValue(Double.parseDouble(priceStr));
+                                } catch (NumberFormatException e) {
+                                    cell.setCellValue(priceStr);
+                                }
+                            }
+                        }
+                        // Price_Currency (attribute of price tag)
+                        else if (header.equalsIgnoreCase("Price_Currency")) {
+                            NodeList priceNodes = productElement.getElementsByTagName("price");
+                            if (priceNodes.getLength() > 0) {
+                                Element priceElement = (Element) priceNodes.item(0);
+                                if (priceElement.hasAttribute("currency")) {
+                                    cell.setCellValue(priceElement.getAttribute("currency"));
+                                }
+                            }
+                        }
+                        // Features (concatenated from multiple tags)
+                        else if (header.equalsIgnoreCase("features")) {
+                            cell.setCellValue(getFeaturesConcatenated(productElement));
+                        }
+                        // Stock (value of tag)
+                        else if (header.equalsIgnoreCase("stock")) {
+                            String stockStr = getTagValue("stock", productElement);
+                            if (!stockStr.isEmpty()) {
+                                try {
+                                    cell.setCellValue(Integer.parseInt(stockStr));
+                                } catch (NumberFormatException e) {
+                                    cell.setCellValue(stockStr);
+                                }
+                            }
+                        }
+                        // Stock_Available (attribute of stock tag)
+                        else if (header.equalsIgnoreCase("Stock_Available")) {
+                            NodeList stockNodes = productElement.getElementsByTagName("stock");
+                            if (stockNodes.getLength() > 0) {
+                                Element stockElement = (Element) stockNodes.item(0);
+                                if (stockElement.hasAttribute("available")) {
+                                    cell.setCellValue(Boolean.parseBoolean(stockElement.getAttribute("available")));
+                                }
+                            }
+                        }
+                        // Weight (value of tag)
+                        else if (header.equalsIgnoreCase("weight")) {
+                            cell.setCellValue(getTagValue("weight", productElement));
+                        }
+                        // Weight_Unit (attribute of weight tag)
+                        else if (header.equalsIgnoreCase("Weight_Unit")) {
+                            NodeList weightNodes = productElement.getElementsByTagName("weight");
+                            if (weightNodes.getLength() > 0) {
+                                Element weightElement = (Element) weightNodes.item(0);
+                                if (weightElement.hasAttribute("unit")) {
+                                    cell.setCellValue(weightElement.getAttribute("unit"));
+                                }
+                            }
+                        }
+                        // Default for any other headers (in case XML has unexpected simple tags)
+                        else {
+                            String value = getTagValue(header, productElement);
+                            if (!value.isEmpty()) {
+                                cell.setCellValue(value);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Auto-size columns for better readability
+            for (int i = 0; i < headerList.size(); i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            // 4. Save the Excel file
+            try (FileOutputStream outputStream = new FileOutputStream(excelFilePath)) {
+                workbook.write(outputStream);
+                System.out.println("XML data successfully written to Excel with dynamic product headers: " + excelFilePath);
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Helper method to get tag value
+    private static String getTagValue(String tagName, Element element) {
+        NodeList nodeList = element.getElementsByTagName(tagName);
+        if (nodeList != null && nodeList.getLength() > 0) {
+            NodeList childNodes = nodeList.item(0).getChildNodes();
+            if (childNodes != null && childNodes.getLength() > 0) {
+                Node node = childNodes.item(0);
+                if (node != null) {
+                    return node.getNodeValue();
+                }
+            }
+        }
+        return "";
+    }
+
+    // Helper method to get concatenated features
+    private static String getFeaturesConcatenated(Element productElement) {
+        List<String> featuresList = new ArrayList<>();
+        NodeList featuresParentNode = productElement.getElementsByTagName("features");
+        if (featuresParentNode.getLength() > 0) {
+            Element featuresElement = (Element) featuresParentNode.item(0);
+            NodeList featureNodes = featuresElement.getElementsByTagName("feature");
+            for (int j = 0; j < featureNodes.getLength(); j++) {
+                featuresList.add(featureNodes.item(j).getTextContent());
+            }
+        }
+        return String.join("; ", featuresList);
+    }
+}
