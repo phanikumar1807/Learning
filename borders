@@ -1,0 +1,62 @@
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+public class ExcelBorderApplier {
+
+    public static void main(String[] args) {
+        String excelFilePath = "your_excel_file.xlsx";
+        String outputFilePath = "your_excel_file_with_borders.xlsx";
+
+        int startRow = 34;
+        int endRow = 44;
+        int startCol = 2;
+        int endCol = 5;
+
+        try (FileInputStream fis = new FileInputStream(excelFilePath);
+             Workbook workbook = new XSSFWorkbook(fis)) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+
+            for (int r = startRow; r <= endRow; r++) {
+                Row row = sheet.getRow(r);
+                if (row == null) {
+                    row = sheet.createRow(r);
+                }
+
+                for (int c = startCol; c <= endCol; c++) {
+                    Cell cell = row.getCell(c);
+                    if (cell == null) {
+                        cell = row.createCell(c);
+                    }
+
+                    CellStyle originalStyle = cell.getCellStyle();
+                    CellStyle newCellStyle = workbook.createCellStyle();
+
+                    if (originalStyle != null) {
+                        newCellStyle.cloneStyleFrom(originalStyle);
+                    }
+
+                    newCellStyle.setBorderTop(BorderStyle.THIN);
+                    newCellStyle.setBorderBottom(BorderStyle.THIN);
+                    newCellStyle.setBorderLeft(BorderStyle.THIN);
+                    newCellStyle.setBorderRight(BorderStyle.THIN);
+
+                    cell.setCellStyle(newCellStyle);
+                }
+            }
+
+            try (FileOutputStream fos = new FileOutputStream(outputFilePath)) {
+                workbook.write(fos);
+                System.out.println("Borders applied successfully to " + outputFilePath);
+            }
+
+        } catch (IOException e) {
+            System.err.println("Error processing Excel file: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
