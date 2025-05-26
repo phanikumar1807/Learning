@@ -1,0 +1,124 @@
+package april22;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.List;
+
+public class XmlToExcelConverter {
+
+	public static void main(String[] args) {
+
+		String xmlFilePath = "C:\\Users\\inahp\\eclipse-workspace\\ImageToExcel\\src\\main\\resources\\images\\products.xml";
+		String excelFilePath = "C:\\Users\\inahp\\eclipse-workspace\\ImageToExcel\\src\\main\\resources\\images\\products.xlsx";
+
+		try {
+
+			File xmlFile = new File(xmlFilePath);
+			if (!xmlFile.exists()) {
+				System.err.println("Error: Input XML file not found at " + xmlFilePath);
+				return;
+			}
+
+			DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+			DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+			Document doc = dBuilder.parse(xmlFile);
+			doc.getDocumentElement().normalize();
+
+			System.out.println("Root element of XML: " + doc.getDocumentElement().getNodeName());
+
+			NodeList itemList = doc.getElementsByTagName("FBBEvent");
+			if (itemList.getLength() == 0) {
+				System.out.println("No 'FBBEvent' elements found in the XML file. Exiting.");
+				return;
+			}
+
+			List<String> headers = new ArrayList<>();
+			// Get the first item element to extract headers
+			Element firstItemElement = (Element) itemList.item(0);
+			NodeList firstItemChildren = firstItemElement.getChildNodes();
+
+			for (int i = 0; i < firstItemChildren.getLength(); i++) {
+				Node childNode = firstItemChildren.item(i);
+				if (childNode.getNodeType() == Node.ELEMENT_NODE) {
+					// Add the tag name of each child element as a header
+					headers.add(childNode.getNodeName());
+				}
+			}
+
+			Workbook workbook = new XSSFWorkbook();
+			Sheet sheet = workbook.createSheet("Data");
+
+			Row headerRow = sheet.createRow(0);
+			for (int i = 0; i < headers.size(); i++) {
+				headerRow.createCell(i).setCellValue(headers.get(i));
+			}
+
+			int rowNum = 1;
+
+			for (int i = 0; i < itemList.getLength(); i++) {
+				Node itemNode = itemList.item(i);
+
+				if (itemNode.getNodeType() == Node.ELEMENT_NODE) {
+					Element itemElement = (Element) itemNode;
+
+					Row row = sheet.createRow(rowNum++);
+
+					for (int j = 0; j < headers.size(); j++) {
+						String header = headers.get(j);
+						String value = getElementValue(itemElement, header);
+
+						Cell cell = row.createCell(j);
+
+						try {
+
+							cell.setCellValue(Double.parseDouble(value));
+						} catch (NumberFormatException e) {
+
+							try {
+								cell.setCellValue(Integer.parseInt(value));
+							} catch (NumberFormatException e2) {
+								cell.setCellValue(value);
+							}
+						}
+					}
+				}
+			}
+
+			try (FileOutputStream outputStream = new FileOutputStream(excelFilePath)) {
+				workbook.write(outputStream);
+				System.out.println("Successfully converted XML data to Excel: " + excelFilePath);
+			}
+
+			workbook.close();
+
+		} catch (Exception e) {
+			System.err.println("An error occurred during XML to Excel conversion: " + e.getMessage());
+			e.printStackTrace();
+		}
+	}
+
+	private static String getElementValue(Element parentElement, String tagName) {
+		NodeList nodeList = parentElement.getElementsByTagName(tagName);
+		if (nodeList != null && nodeList.getLength() > 0) {
+			Node node = nodeList.item(0);
+			if (node.getNodeType() == Node.ELEMENT_NODE) {
+				return node.getTextContent();
+			}
+		}
+		return "";
+	}
+}
