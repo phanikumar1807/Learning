@@ -1,0 +1,49 @@
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+public class XmlToExcelLineByLine {
+
+    public static void main(String[] args) {
+        String xmlFilePath = "books.xml";
+        String excelFilePath = "XmlContentOutput.xlsx";
+
+        try (
+            BufferedReader reader = new BufferedReader(new FileReader(xmlFilePath));
+            Workbook workbook = new XSSFWorkbook();
+            FileOutputStream outputStream = new FileOutputStream(excelFilePath)
+        ) {
+            Sheet sheet = workbook.createSheet("XML Raw Content");
+
+            String line;
+            int rowNum = 0;
+
+            System.out.println("Starting to read XML file and write to Excel...");
+
+            while ((line = reader.readLine()) != null) {
+                Row row = sheet.createRow(rowNum++);
+                Cell cell = row.createCell(0);
+                cell.setCellValue(line);
+            }
+
+            if (rowNum > 0) {
+                sheet.autoSizeColumn(0);
+            }
+
+            workbook.write(outputStream);
+
+            System.out.println("Successfully created Excel file: '" + excelFilePath + "' with XML content line by line.");
+
+        } catch (IOException e) {
+            System.err.println("An error occurred during file processing: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
