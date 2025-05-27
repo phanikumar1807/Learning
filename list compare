@@ -1,0 +1,63 @@
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class ConsecutiveRecordComparator {
+
+    public static void main(String[] args) {
+        List<Map<String, String>> dataRecords = new ArrayList<>();
+
+        // Add some sample data
+        Map<String, String> rec1 = new HashMap<>();
+        rec1.put("id", "A1");
+        rec1.put("value", "apple");
+        dataRecords.add(rec1);
+
+        Map<String, String> rec2 = new HashMap<>();
+        rec2.put("id", "A2");
+        rec2.put("value", "banana");
+        dataRecords.add(rec2);
+
+        Map<String, String> rec3 = new HashMap<>();
+        rec3.put("id", "A3");
+        rec3.put("value", "apple"); // Duplicate value for 'apple'
+        dataRecords.add(rec3);
+
+        Map<String, String> rec4 = new HashMap<>();
+        rec4.put("id", "A4");
+        rec4.put("value", "apple"); // Another duplicate value
+        dataRecords.add(rec4);
+
+        Map<String, String> rec5 = new HashMap<>();
+        rec5.put("id", "A5");
+        rec5.put("value", "orange");
+        dataRecords.add(rec5);
+
+        int recordsWithSameValueAsPrevious = 0;
+
+        // Start comparing from the second record (index 1)
+        // because each record is compared with its immediate predecessor.
+        for (int i = 1; i < dataRecords.size(); i++) {
+            Map<String, String> currentRecord = dataRecords.get(i);
+            Map<String, String> previousRecord = dataRecords.get(i - 1);
+
+            // Example comparison: Check if the "value" field is the same
+            String currentValue = currentRecord.get("value");
+            String previousValue = previousRecord.get("value");
+
+            if (currentValue != null && previousValue != null && currentValue.equals(previousValue)) {
+                System.out.println("Record " + i + " ('" + currentRecord.get("id") + "') has same 'value' as Record " + (i - 1) + " ('" + previousRecord.get("id") + "')");
+                recordsWithSameValueAsPrevious++;
+            } else if (currentValue == null && previousValue == null) {
+                // Both values are null, consider them "same" for this example
+                System.out.println("Record " + i + " and " + (i-1) + " both have null 'value' (considered same)");
+                recordsWithSameValueAsPrevious++;
+            }
+            // Add more complex map-wide comparisons here if needed
+            // e.g., if (currentRecord.equals(previousRecord)) { ... } for full map equality
+        }
+
+        System.out.println("\nTotal records where 'value' matches the previous record: " + recordsWithSameValueAsPrevious); // Expected: 2 (A3 with A2, A4 with A3)
+    }
+}
