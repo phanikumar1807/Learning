@@ -7,18 +7,21 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Iterator;
+import java.util.LinkedHashMap; // To preserve column order
+import java.util.Map;
 
-public class ExcelSplitterInPlace {
+public class ExcelSplitterPreserveColumns {
 
     public static void main(String[] args) {
-        String filePath = ""; // The same file for input and output
+        String filePath = "C:\\Users\\inahp\\eclipse-workspace\\ImageToExcel\\src\\main\\resources\\images\\sample.xlsx"; // The same file for input and output
 
         try {
-            // Step 1: Read and process the data
-            List<RowData> processedData = readAndProcessExcel(filePath);
+            // Step 1: Read and process all data
+            List<Map<String, String>> processedData = readAndProcessExcel(filePath);
 
             // Step 2: Write the processed data back to the same file/sheet
-            writeToSameExcelSheet(processedData, filePath);
+            writeToSameExcelSheetPreservingColumns(processedData, filePath);
 
             System.out.println("Excel file processed and saved successfully to: " + filePath);
         } catch (IOException e) {
@@ -27,65 +30,113 @@ public class ExcelSplitterInPlace {
         }
     }
 
-    public static List<RowData> readAndProcessExcel(String filePath) throws IOException {
-        List<RowData> processedRows = new ArrayList<>();
+    // Reads all data, identifies headers, and processes 'Issue' column
+    public static List<Map<String, String>> readAndProcessExcel(String filePath) throws IOException {
+        List<Map<String, String>> processedRows = new ArrayList<>();
+        List<String> headers = new ArrayList<>(); // To store header names and their order
 
         try (FileInputStream fis = new FileInputStream(filePath);
              Workbook workbook = new XSSFWorkbook(fis)) {
             Sheet sheet = workbook.getSheetAt(0); // Assuming data is in the first sheet
 
-            boolean isFirstRow = true;
-            for (Row row : sheet) {
-                if (isFirstRow) {
-                    isFirstRow = false;
-                    continue; // Skip header row during processing
+            Iterator<Row> rowIterator = sheet.iterator();
+
+            // Read Header Row
+            if (rowIterator.hasNext()) {
+                Row headerRow = rowIterator.next();
+                for (Cell cell : headerRow) {
+                    headers.add(getCellValueAsString(cell));
+                }
+            }
+
+            // Find column indices for 'Key' and 'Issue'
+            int keyColIndex = -1;
+            int issueColIndex = -1;
+            for (int i = 0; i < headers.size(); i++) {
+                if ("Key".equalsIgnoreCase(headers.get(i))) {
+                    keyColIndex = i;
+                } else if ("Issue".equalsIgnoreCase(headers.get(i))) {
+                    issueColIndex = i;
+                }
+            }
+
+            if (keyColIndex == -1 || issueColIndex == -1) {
+                throw new IllegalArgumentException("Excel file must contain 'Key' and 'Issue' headers.");
+            }
+
+            // Process Data Rows
+            while (rowIterator.hasNext()) {
+                Row currentRow = rowIterator.next();
+                Map<String, String> originalRowData = new LinkedHashMap<>(); // Preserve order of other columns
+
+                // Collect all cell data for the current row
+                for (int i = 0; i < headers.size(); i++) {
+                    Cell cell = currentRow.getCell(i);
+                    originalRowData.put(headers.get(i), getCellValueAsString(cell));
                 }
 
-                Cell keyCell = row.getCell(0); // Assuming Key is in the first column (index 0)
-                Cell issueCell = row.getCell(1); // Assuming Issue is in the second column (index 1)
-
-                if (keyCell == null || issueCell == null) {
-                    continue; // Skip rows with missing key or issue data
-                }
-
-                String key = getCellValueAsString(keyCell);
-                String issuesString = getCellValueAsString(issueCell);
+                String key = originalRowData.get(headers.get(keyColIndex));
+                String issuesString = originalRowData.get(headers.get(issueColIndex));
 
                 if (key != null && !key.trim().isEmpty() && issuesString != null && !issuesString.trim().isEmpty()) {
                     String[] issues = issuesString.split(",");
                     for (String issue : issues) {
-                        processedRows.add(new RowData(key, issue.trim())); // Trim whitespace
+                        Map<String, String> newRow = new LinkedHashMap<>(originalRowData); // Copy all original data
+                        newRow.put(headers.get(issueColIndex), issue.trim()); // Override 'Issue' column
+                        processedRows.add(newRow);
                     }
+                } else {
+                    // If no issues to split, add the original row as is
+                    processedRows.add(originalRowData);
                 }
             }
-        } // Workbook is closed here, but we need to re-open it for writing
+        }
         return processedRows;
     }
 
-    public static void writeToSameExcelSheet(List<RowData> data, String filePath) throws IOException {
+    // Writes the processed data back to the same Excel sheet, preserving other columns
+    public static void writeToSameExcelSheetPreservingColumns(List<Map<String, String>> data, String filePath) throws IOException {
         try (FileInputStream fis = new FileInputStream(filePath);
-             Workbook workbook = new XSSFWorkbook(fis)) { // Re-open the workbook for writing
+             Workbook workbook = new XSSFWorkbook(fis)) {
             Sheet sheet = workbook.getSheetAt(0);
 
-            // Clear existing rows in the sheet
+            // Get headers from the first entry of processed data to maintain order
+            List<String> headers = new ArrayList<>(data.isEmpty() ? List.of("Key", "Issue") : data.get(0).keySet());
+
+            // Clear all data rows (but not the header)
             int lastRowNum = sheet.getLastRowNum();
-            for (int i = 0; i <= lastRowNum; i++) {
+            for (int i = 1; i <= lastRowNum; i++) { // Start from 1 to preserve header
                 Row row = sheet.getRow(i);
                 if (row != null) {
                     sheet.removeRow(row);
                 }
             }
+            // For older POI versions or specific clearing needs, iterating cells and setting to blank might be safer than removeRow
+            // For example:
+            // for (int i = 1; i <= lastRowNum; i++) {
+            //     Row row = sheet.getRow(i);
+            //     if (row != null) {
+            //         for (int j = 0; j < row.getLastCellNum(); j++) {
+            //             Cell cell = row.getCell(j);
+            //             if (cell != null) {
+            //                 cell.setBlank(); // Clear cell content
+            //             }
+            //         }
+            //     }
+            // }
 
-            // Create header row
-            Row headerRow = sheet.createRow(0);
-            headerRow.createCell(0).setCellValue("Key");
-            headerRow.createCell(1).setCellValue("Issue");
-
-            int rowNum = 1; // Start writing from the second row after the header
-            for (RowData rowData : data) {
-                Row row = sheet.createRow(rowNum++);
-                row.createCell(0).setCellValue(rowData.getKey());
-                row.createCell(1).setCellValue(rowData.getIssue());
+            // Write updated data
+            int rowNum = 1; // Start writing after the header row (row 0)
+            for (Map<String, String> rowData : data) {
+                Row newRow = sheet.createRow(rowNum++);
+                for (int i = 0; i < headers.size(); i++) {
+                    String header = headers.get(i);
+                    Cell cell = newRow.createCell(i);
+                    String value = rowData.get(header);
+                    if (value != null) {
+                        cell.setCellValue(value);
+                    }
+                }
             }
 
             // Write changes back to the same file
@@ -108,6 +159,7 @@ public class ExcelSplitterInPlace {
                 if (DateUtil.isCellDateFormatted(cell)) {
                     return cell.getDateCellValue().toString();
                 } else {
+                    // Return as string, handle potential decimals if keys are integers
                     return String.valueOf((int) cell.getNumericCellValue());
                 }
             case BOOLEAN:
@@ -118,25 +170,6 @@ public class ExcelSplitterInPlace {
                 return "";
             default:
                 return null;
-        }
-    }
-
-    // Simple data class to hold processed row data
-    private static class RowData {
-        private String key;
-        private String issue;
-
-        public RowData(String key, String issue) {
-            this.key = key;
-            this.issue = issue;
-        }
-
-        public String getKey() {
-            return key;
-        }
-
-        public String getIssue() {
-            return issue;
         }
     }
 }
