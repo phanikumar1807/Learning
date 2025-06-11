@@ -1,0 +1,205 @@
+package april22;
+
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellType;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+public class ExcelDataComparator {
+
+	public static void main(String[] args) {
+
+		String excelFilePath = "C:\\Users\\inahp\\Desktop\\demo.xlsx";
+
+		try {
+			List<Map<String, String>> uiData = parseDataSection(excelFilePath, "UI Data");
+			if (uiData.isEmpty()) {
+				System.out.println("Could not find 'UI Data' section or data in the provided XLSX file.");
+				return;
+			}
+
+			List<Map<String, String>> dbData = parseDataSection(excelFilePath, "DB Data");
+			if (dbData.isEmpty()) {
+				System.out.println("Could not find 'DB Data' section or data in the provided XLSX file.");
+				return;
+			}
+
+//			System.out.println("Output table (Console Output)");
+//			compareAndPrintResultsToConsole(dbData, uiData);
+
+//			System.out.println("\nGenerating Excel comparison report: " + excelFilePath);
+			writeComparisonResultsToExcel(dbData, uiData, excelFilePath);
+			System.out.println("Comparison results successfully written to Excel file.");
+
+		} catch (IOException e) {
+			System.err.println("Error reading, parsing, or writing XLSX file: " + e.getMessage());
+			e.printStackTrace();
+		} catch (Exception e) {
+			System.err.println("An unexpected error occurred during XLSX processing: " + e.getMessage());
+			e.printStackTrace();
+		}
+	}
+
+	private static List<Map<String, String>> parseDataSection(String filePath, String sectionMarker)
+			throws IOException, Exception {
+		List<Map<String, String>> data = new ArrayList<>();
+		FileInputStream excelFile = new FileInputStream(filePath);
+		Workbook workbook = new XSSFWorkbook(excelFile);
+		Sheet sheet = workbook.getSheetAt(0);
+
+		Iterator<Row> rowIterator = sheet.iterator();
+		boolean inSection = false;
+		List<String> headers = new ArrayList<>();
+
+		while (rowIterator.hasNext()) {
+			Row currentRow = rowIterator.next();
+			Cell firstCell = currentRow.getCell(0);
+
+			String cellValue = getCellValueAsString(firstCell);
+
+			if (cellValue.trim().equals(sectionMarker)) {
+				inSection = true;
+				headers.clear();
+				if (rowIterator.hasNext()) {
+					currentRow = rowIterator.next();
+					Iterator<Cell> cellIterator = currentRow.iterator();
+					while (cellIterator.hasNext()) {
+						Cell currentCell = cellIterator.next();
+						headers.add(getCellValueAsString(currentCell).trim());
+					}
+				}
+				continue;
+			}
+
+			if (inSection) {
+				if (cellValue.trim().contains("Data") && !cellValue.trim().equals(sectionMarker)
+						&& !headers.isEmpty()) {
+					inSection = false;
+					break;
+				}
+
+				if (headers.isEmpty() || isRowEmpty(currentRow)) {
+					continue;
+				}
+
+				Map<String, String> rowMap = new HashMap<>();
+				for (int i = 0; i < headers.size(); i++) {
+					Cell cell = currentRow.getCell(i);
+					String value = getCellValueAsString(cell);
+					rowMap.put(headers.get(i), value);
+				}
+				data.add(rowMap);
+			}
+		}
+
+		workbook.close();
+		excelFile.close();
+		return data;
+	}
+
+	private static String getCellValueAsString(Cell cell) {
+		if (cell == null) {
+			return null;
+		}
+		CellType cellType = cell.getCellType();
+		switch (cellType) {
+		case STRING:
+			return cell.getStringCellValue();
+		case NUMERIC:
+
+			return String.valueOf((int) cell.getNumericCellValue()); // Convert numeric to string (e.g., for integer
+																		// keys)
+
+		case BOOLEAN:
+			return String.valueOf(cell.getBooleanCellValue());
+		case FORMULA:
+			return cell.getCellFormula(); // You might want to evaluate formulas
+		case BLANK:
+			return "";
+		default:
+			return null;
+		}
+	}
+
+	private static boolean isRowEmpty(Row row) {
+		if (row == null) {
+			return true;
+		}
+		Iterator<Cell> cellIterator = row.cellIterator();
+		while (cellIterator.hasNext()) {
+			Cell cell = cellIterator.next();
+			if (cell != null && cell.getCellType() != CellType.BLANK && !getCellValueAsString(cell).trim().isEmpty()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static void writeComparisonResultsToExcel(List<Map<String, String>> dbData,
+			List<Map<String, String>> uiData, String excelFilePath) throws IOException {
+		FileInputStream fis = new FileInputStream(excelFilePath);
+		Workbook workbook = new XSSFWorkbook(fis);
+		Sheet sheet = workbook.getSheetAt(0);
+
+		List<String> allHeaders = new ArrayList<>();
+		if (!uiData.isEmpty()) {
+			uiData.get(0).keySet().forEach(header -> {
+				if (!allHeaders.contains(header)) {
+					allHeaders.add(header);
+				}
+			});
+		}
+		if (!dbData.isEmpty()) {
+			dbData.get(0).keySet().forEach(header -> {
+				if (!allHeaders.contains(header)) {
+					allHeaders.add(header);
+				}
+			});
+		}
+		int LastRowNum = sheet.getLastRowNum();
+		Row nameRow = sheet.createRow(LastRowNum + 1);
+		Cell nameCell = nameRow.createCell(0);
+		nameCell.setCellValue("Compared Data");
+		Row headerRow = sheet.createRow(sheet.getLastRowNum() + 1);
+		for (int i = 0; i < allHeaders.size(); i++) {
+			Cell cell = headerRow.createCell(i);
+			cell.setCellValue(allHeaders.get(i));
+		}
+
+		int rowNum = sheet.getLastRowNum() + 1;
+		int maxRows = Math.max(dbData.size(), uiData.size());
+
+		for (int i = 0; i < maxRows; i++) {
+			Row currentRow = sheet.createRow(rowNum++);
+			Map<String, String> dbRow = (i < dbData.size()) ? dbData.get(i) : null;
+			Map<String, String> uiRow = (i < uiData.size()) ? uiData.get(i) : null;
+
+			for (int j = 0; j < allHeaders.size(); j++) {
+				Cell cell = currentRow.createCell(j);
+				String header = allHeaders.get(j);
+				String dbValue = (dbRow != null) ? dbRow.getOrDefault(header, "") : "";
+				String uiValue = (uiRow != null) ? uiRow.getOrDefault(header, "") : "";
+
+				boolean match =  uiValue.equals(dbValue);
+				cell.setCellValue(match);
+			}
+		}
+
+		try (FileOutputStream outputStream = new FileOutputStream(excelFilePath)) {
+			workbook.write(outputStream);
+		}
+		workbook.close();
+	}
+
+}
