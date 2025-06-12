@@ -1,21 +1,21 @@
 package april22;
+
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
-public class ExcelDuplicateRemover {
+public class ExcelDuplicateRemoverInPlace {
 
     private static final String FILE_PATH = "C:\\Users\\inahp\\Desktop\\demo.xlsx"; // Replace with your file path
     private static final String SHEET_NAME = "Active Jiras"; // Replace with your sheet name
-    private static final String UNIQUE_SHEET_NAME = "Scrubbed active Jiras"; // Name for the new sheet
 
     public static void main(String[] args) {
         try {
@@ -35,8 +35,8 @@ public class ExcelDuplicateRemover {
             Row headerRow = sheet.getRow(0); // Assuming header is in the first row (row 0)
             if (headerRow != null) {
                 for (Cell cell : headerRow) {
-                    String cellValue = cell.getStringCellValue();
-                    if ("issue Key".equalsIgnoreCase(cellValue)) {
+                    String cellValue = getCellValueAsString(cell); // Use helper for header too
+                    if ("Issue Key".equalsIgnoreCase(cellValue)) {
                         issueKeyColIndex = cell.getColumnIndex();
                     } else if ("Issue_Link".equalsIgnoreCase(cellValue)) {
                         issueLinkColIndex = cell.getColumnIndex();
@@ -50,16 +50,24 @@ public class ExcelDuplicateRemover {
             }
 
             Set<String> uniqueCombinations = new HashSet<>();
-            List<Row> uniqueRows = new ArrayList<>();
+            List<List<String>> uniqueRowData = new ArrayList<>(); // Store data as list of strings
 
-            // Iterate over rows, starting from the second row (skipping header)
-            Iterator<Row> rowIterator = sheet.iterator();
-            if (rowIterator.hasNext()) {
-                uniqueRows.add(rowIterator.next()); // Add header row to uniqueRows
+            // Add header row to uniqueRowData
+            if (headerRow != null) {
+                List<String> headerData = new ArrayList<>();
+                for (int i = 0; i < headerRow.getLastCellNum(); i++) {
+                    headerData.add(getCellValueAsString(headerRow.getCell(i)));
+                }
+                uniqueRowData.add(headerData);
             }
 
-            while (rowIterator.hasNext()) {
-                Row currentRow = rowIterator.next();
+            // Iterate over rows, starting from the second row (index 1) for data
+            for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+                Row currentRow = sheet.getRow(r);
+                if (currentRow == null) {
+                    continue; // Skip empty rows
+                }
+
                 Cell issueKeyCell = currentRow.getCell(issueKeyColIndex);
                 Cell issueLinkCell = currentRow.getCell(issueLinkColIndex);
 
@@ -70,24 +78,34 @@ public class ExcelDuplicateRemover {
 
                 if (!uniqueCombinations.contains(combinedKey)) {
                     uniqueCombinations.add(combinedKey);
-                    uniqueRows.add(currentRow); // Add the entire row if it's unique
+                    List<String> rowData = new ArrayList<>();
+                    for (int c = 0; c < currentRow.getLastCellNum(); c++) {
+                        rowData.add(getCellValueAsString(currentRow.getCell(c)));
+                    }
+                    uniqueRowData.add(rowData); // Add the data of the row if it's unique
                 }
             }
-            fis.close();
+            fis.close(); // Close input stream after reading
 
-            // Create a new sheet for unique data
-            Sheet uniqueSheet = workbook.createSheet(UNIQUE_SHEET_NAME);
+            // Clear the existing sheet content
+            int lastRow = sheet.getLastRowNum();
+            for (int i = 0; i <= lastRow; i++) {
+                Row row = sheet.getRow(i);
+                if (row != null) {
+                    sheet.removeRow(row);
+                }
+            }
 
-            // Copy unique rows to the new sheet
-            for (int i = 0; i < uniqueRows.size(); i++) {
-                Row sourceRow = uniqueRows.get(i);
-                Row newRow = uniqueSheet.createRow(i);
-                for (int j = 0; j < sourceRow.getLastCellNum(); j++) {
-                    Cell sourceCell = sourceRow.getCell(j);
-                    if (sourceCell != null) {
-                        Cell newCell = newRow.createCell(j, sourceCell.getCellType());
-                        copyCellValue(sourceCell, newCell);
-                    }
+            // Write the unique data back to the same sheet
+            for (int r = 0; r < uniqueRowData.size(); r++) {
+                Row newRow = sheet.createRow(r); // Create new rows sequentially
+                List<String> rowValues = uniqueRowData.get(r);
+                for (int c = 0; c < rowValues.size(); c++) {
+                    Cell newCell = newRow.createCell(c);
+                    newCell.setCellValue(rowValues.get(c));
+                    // Note: This simplified version does not copy cell styles.
+                    // If you need styles, you'd need to store CellStyle objects
+                    // in uniqueRowData or reapply them based on some logic.
                 }
             }
 
@@ -97,7 +115,7 @@ public class ExcelDuplicateRemover {
             workbook.close();
             fos.close();
 
-            System.out.println("Duplicate rows removed and unique data saved to sheet '" + UNIQUE_SHEET_NAME + "' in " + FILE_PATH);
+            System.out.println("Duplicate rows removed and unique data updated in sheet '" + SHEET_NAME + "' in " + FILE_PATH);
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -113,59 +131,19 @@ public class ExcelDuplicateRemover {
             case STRING:
                 return cell.getStringCellValue();
             case NUMERIC:
-                // Handle numeric cells, including dates
                 if (DateUtil.isCellDateFormatted(cell)) {
-                    return cell.getDateCellValue().toString(); // Or format as needed
+                    return cell.getDateCellValue().toString();
                 } else {
                     return String.valueOf(cell.getNumericCellValue());
                 }
             case BOOLEAN:
                 return String.valueOf(cell.getBooleanCellValue());
             case FORMULA:
-                // Evaluate formulas if needed, otherwise return the formula string
-                return cell.getCellFormula();
+                return cell.getCellFormula(); // Consider evaluating if you want the result
             case BLANK:
                 return "";
             default:
                 return "";
         }
-    }
-
-    // Helper method to copy cell content and style
-    private static void copyCellValue(Cell oldCell, Cell newCell) {
-        if (oldCell == null) {
-            return;
-        }
-
-        // Copy cell value
-        switch (oldCell.getCellType()) {
-            case STRING:
-                newCell.setCellValue(oldCell.getStringCellValue());
-                break;
-            case NUMERIC:
-                newCell.setCellValue(oldCell.getNumericCellValue());
-                break;
-            case BOOLEAN:
-                newCell.setCellValue(oldCell.getBooleanCellValue());
-                break;
-            case FORMULA:
-                newCell.setCellFormula(oldCell.getCellFormula());
-                break;
-            case ERROR:
-                newCell.setCellErrorValue(oldCell.getErrorCellValue());
-                break;
-            case BLANK:
-                // Do nothing for blank cells
-                break;
-		case _NONE:
-			break;
-		default:
-			break;
-        }
-
-        // Copy cell style (optional, but good for preserving formatting)
-        CellStyle newCellStyle = oldCell.getSheet().getWorkbook().createCellStyle();
-        newCellStyle.cloneStyleFrom(oldCell.getCellStyle());
-        newCell.setCellStyle(newCellStyle);
     }
 }
