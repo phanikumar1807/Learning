@@ -1,0 +1,61 @@
+import java.io.*;
+
+public class TectiaInputExample {
+    public static void main(String[] args) {
+        try {
+            String[] command = { "sshg3", "username@host", "your-script-or-command" };
+
+            ProcessBuilder pb = new ProcessBuilder(command);
+            Process process = pb.start();
+
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            BufferedReader errReader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
+
+            String line;
+            StringBuilder outputBuffer = new StringBuilder();
+
+            long startTime = System.currentTimeMillis();
+            long timeout = 5000;
+
+            while (true) {
+                if (reader.ready()) {
+                    line = reader.readLine();
+                    if (line != null) {
+                        System.out.println("Remote output: " + line);
+                        outputBuffer.append(line).append("\n");
+
+                        if (line.contains("Password:") || line.contains("Enter value:")) {
+                            System.out.println("Prompt detected: " + line);
+                            break;
+                        }
+                    }
+                }
+
+                if (errReader.ready()) {
+                    line = errReader.readLine();
+                    if (line != null) {
+                        System.err.println("Remote error: " + line);
+                    }
+                }
+
+                if (!reader.ready() && !errReader.ready() && (System.currentTimeMillis() - startTime > timeout)) {
+                    System.out.println("Timeout reached while waiting for prompt or output.");
+                    break;
+                }
+
+                Thread.sleep(50);
+            }
+
+            if (outputBuffer.toString().contains("Password:")) {
+                System.out.println("Sending password...");
+                writer.write("your_password_here");
+                writer.newLine();
+            } else if (outputBuffer.toString().contains("Enter value:")) {
+                System.out.println("Sending desired value...");
+                writer.write("your_value_here");
+                writer.newLine();
+            } else {
+                System.out.println("No specific prompt detected, sending a default input.");
+                writer.write("default_input");
+                writer.newLine();
