@@ -1,0 +1,245 @@
+package June20;
+import net.schmizz.sshj.SSHClient;
+import net.schmizz.sshj.connection.channel.direct.Session;
+import net.schmizz.sshj.transport.verification.PromiscuousVerifier;
+import net.schmizz.sshj.connection.channel.direct.Session.Shell;
+import java.io.*;
+import java.util.concurrent.TimeUnit;
+
+public class TectiaPbrunSSHJ {
+    private static final String HOSTNAME = "your-tectia-server.com";
+    private static final int PORT = 22;
+    private static final String USERNAME = "your-username";
+    private static final String PASSWORD = "your-password";
+    private static final String PBRUN_PASSWORD = "your-pbrun-password";
+    
+    public static void main(String[] args) {
+        SSHClient ssh = new SSHClient();
+        
+        try {
+            // Configure SSH client
+            ssh.addHostKeyVerifier(new PromiscuousVerifier());
+            
+            // Connect to the server
+            System.out.println("Connecting to " + HOSTNAME + ":" + PORT);
+            ssh.connect(HOSTNAME, PORT);
+            
+            // Authenticate
+            System.out.println("Authenticating...");
+            ssh.authPassword(USERNAME, PASSWORD);
+            
+            // Create a session for interactive shell
+            Session session = ssh.startSession();
+            
+            // Start a shell session
+            Shell shell = session.startShell();
+            
+            // Get input and output streams
+            OutputStream shellInput = shell.getOutputStream();
+            InputStream shellOutput = shell.getInputStream();
+            InputStream shellError = shell.getErrorStream();
+            
+            // Create readers and writers for interaction
+            PrintWriter writer = new PrintWriter(shellInput, true);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(shellOutput));
+            BufferedReader errorReader = new BufferedReader(new InputStreamReader(shellError));
+            
+            // Wait for initial prompt
+            Thread.sleep(2000);
+            readAvailableOutput(reader, errorReader);
+            
+            // Execute pbrun command
+            System.out.println("Executing pbrun...");
+            writer.println("pbrun");
+            writer.flush();
+            
+            // Wait for password prompt
+            Thread.sleep(2000);
+            String output = readAvailableOutput(reader, errorReader);
+            System.out.println("Server response: " + output);
+            
+            // Check if password is requested
+            if (output.toLowerCase().contains("password")) {
+                System.out.println("Entering pbrun password...");
+                writer.println(PBRUN_PASSWORD);
+                writer.flush();
+                
+                // Wait for privilege access prompt
+                Thread.sleep(2000);
+                output = readAvailableOutput(reader, errorReader);
+                System.out.println("Server response: " + output);
+            }
+            
+            // Check for privilege access prompt
+            if (output.toLowerCase().contains("privilege") || 
+                output.toLowerCase().contains("access") ||
+                output.toLowerCase().contains("continue")) {
+                System.out.println("Confirming privilege access...");
+                writer.println("yes");
+                writer.flush();
+                
+                // Wait for confirmation
+                Thread.sleep(2000);
+                output = readAvailableOutput(reader, errorReader);
+                System.out.println("Server response: " + output);
+            }
+            
+            // Now execute ls command
+            System.out.println("Executing ls command...");
+            writer.println("ls -la");
+            writer.flush();
+            
+            // Wait for command output
+            Thread.sleep(2000);
+            String lsOutput = readAvailableOutput(reader, errorReader);
+            
+            // Display ls command output
+            System.out.println("\n=== LS Command Output ===");
+            System.out.println(lsOutput);
+            System.out.println("=== End of LS Output ===\n");
+            
+            // Clean exit
+            writer.println("exit");
+            writer.flush();
+            
+            // Close resources
+            shell.close();
+            session.close();
+            
+        } catch (Exception e) {
+            System.err.println("Error occurred: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            try {
+                ssh.disconnect();
+                System.out.println("SSH connection closed.");
+            } catch (Exception e) {
+                System.err.println("Error closing SSH connection: " + e.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * Reads available output from both stdout and stderr streams
+     */
+    private static String readAvailableOutput(BufferedReader reader, BufferedReader errorReader) {
+        StringBuilder output = new StringBuilder();
+        
+        try {
+            // Read from stdout
+            while (reader.ready()) {
+                output.append((char) reader.read());
+            }
+            
+            // Read from stderr
+            while (errorReader.ready()) {
+                output.append((char) errorReader.read());
+            }
+            
+        } catch (Exception e) {
+            System.err.println("Error reading output: " + e.getMessage());
+        }
+        
+        return output.toString();
+    }
+}
+
+// Alternative implementation using expect-like approach
+class TectiaPbrunExpect {
+    private static final String HOSTNAME = "your-tectia-server.com";
+    private static final int PORT = 22;
+    private static final String USERNAME = "your-username";
+    private static final String PASSWORD = "your-password";
+    private static final String PBRUN_PASSWORD = "your-pbrun-password";
+    
+    @SuppressWarnings({ "unused", "unused" })
+	public static void executeWithExpect() {
+        SSHClient ssh = new SSHClient();
+        
+        try {
+            ssh.addHostKeyVerifier(new PromiscuousVerifier());
+            ssh.connect(HOSTNAME, PORT);
+            ssh.authPassword(USERNAME, PASSWORD);
+            
+            Session session = ssh.startSession();
+            
+            // Use exec for more controlled command execution
+            Session.Command cmd = session.exec("pbrun");
+            
+            // Handle input/output streams
+            OutputStream cmdInput = cmd.getOutputStream();
+            InputStream cmdOutput = cmd.getInputStream();
+            InputStream cmdError = cmd.getErrorStream();
+            
+            final PrintWriter writer = new PrintWriter(cmdInput, true);
+            final BufferedReader reader = new BufferedReader(new InputStreamReader(cmdOutput));
+            BufferedReader errorReader = new BufferedReader(new InputStreamReader(cmdError));
+            
+            // Create a separate thread to handle interactive prompts
+            Thread responseThread = new Thread(() -> {
+                try {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        System.out.println("Output: " + line);
+                        
+                        if (line.toLowerCase().contains("password")) {
+                            System.out.println("Sending password...");
+                            writer.println(PBRUN_PASSWORD);
+                            writer.flush();
+                        } else if (line.toLowerCase().contains("privilege") || 
+                                 line.toLowerCase().contains("continue")) {
+                            System.out.println("Sending yes for privilege access...");
+                            writer.println("yes");
+                            writer.flush();
+                        }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
+            
+            responseThread.start();
+            
+            // Wait for pbrun to complete
+            cmd.join(30, TimeUnit.SECONDS);
+            
+            // Now execute ls command in a new session
+            Session lsSession = ssh.startSession();
+            Session.Command lsCmd = lsSession.exec("ls -la");
+            
+            // Read ls output
+            BufferedReader lsReader = new BufferedReader(new InputStreamReader(lsCmd.getInputStream()));
+            String lsLine;
+            
+            System.out.println("\n=== LS Command Output ===");
+            while ((lsLine = lsReader.readLine()) != null) {
+                System.out.println(lsLine);
+            }
+            System.out.println("=== End of LS Output ===\n");
+            
+            lsCmd.join(10, TimeUnit.SECONDS);
+            lsSession.close();
+            
+            session.close();
+            
+        } catch (Exception e) {
+            System.err.println("Error: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            try {
+                ssh.disconnect();
+            } catch (Exception e) {
+                System.err.println("Error closing connection: " + e.getMessage());
+            }
+        }
+    }
+}
+
+// Maven dependency needed:
+/*
+<dependency>
+    <groupId>com.hierynomus</groupId>
+    <artifactId>sshj</artifactId>
+    <version>0.35.0</version>
+</dependency>
+*/
