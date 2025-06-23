@@ -1,0 +1,45 @@
+package June20;
+import java.io.*;
+
+public class TectiaInputExample {
+    public static void main(String[] args) {
+        try {
+            // Command to run via Tectia SSH (sshg3)
+            String[] command = { "sshg3", "username@host", "your-script-or-command" };
+
+            // Start the process
+            ProcessBuilder pb = new ProcessBuilder(command);
+            Process process = pb.start();
+
+            // Write input to the remote command
+            OutputStream stdin = process.getOutputStream();
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(stdin));
+
+            // Send the input your remote command expects
+            writer.write("your input line 1");
+            writer.newLine();
+            writer.write("your input line 2");
+            writer.newLine();
+            writer.flush();
+            writer.close();  // Important to close or the remote may wait for EOF
+
+            // Read the output
+            BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                System.out.println(line);
+            }
+
+            // Read any error output
+            BufferedReader errReader = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+            while ((line = errReader.readLine()) != null) {
+                System.err.println(line);
+            }
+
+            process.waitFor();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
