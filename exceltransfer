@@ -1,0 +1,107 @@
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Iterator;
+
+public class ExcelSheetCopier {
+
+    public static void main(String[] args) {
+        String sourceFilePath = "source.xlsx"; // Your source Excel file
+        String destinationFilePath = "destination.xlsx"; // Your destination Excel file
+        String sheetToCopyName = "Sheet1"; // The name of the sheet you want to copy
+
+        try {
+            copySheet(sourceFilePath, destinationFilePath, sheetToCopyName);
+            System.out.println("Sheet '" + sheetToCopyName + "' copied successfully from '" + sourceFilePath + "' to '" + destinationFilePath + "'");
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.err.println("Error copying sheet: " + e.getMessage());
+        }
+    }
+
+    public static void copySheet(String sourceFilePath, String destinationFilePath, String sheetName) throws IOException {
+        // Open the source workbook
+        FileInputStream fis = new FileInputStream(sourceFilePath);
+        Workbook sourceWorkbook = new XSSFWorkbook(fis);
+        fis.close();
+
+        // Get the sheet to copy from the source workbook
+        Sheet sourceSheet = sourceWorkbook.getSheet(sheetName);
+        if (sourceSheet == null) {
+            throw new IllegalArgumentException("Sheet '" + sheetName + "' not found in source workbook: " + sourceFilePath);
+        }
+
+        // Open or create the destination workbook
+        Workbook destinationWorkbook;
+        try {
+            FileInputStream destFis = new FileInputStream(destinationFilePath);
+            destinationWorkbook = new XSSFWorkbook(destFis);
+            destFis.close();
+        } catch (IOException e) {
+            // If destination file doesn't exist, create a new workbook
+            destinationWorkbook = new XSSFWorkbook();
+        }
+
+        // Create a new sheet in the destination workbook with the same name
+        Sheet newSheet = destinationWorkbook.createSheet(sheetName);
+
+        // Copy rows from source sheet to new sheet
+        for (int i = 0; i <= sourceSheet.getLastRowNum(); i++) {
+            Row sourceRow = sourceSheet.getRow(i);
+            if (sourceRow == null) {
+                continue; // Skip null rows
+            }
+            Row newRow = newSheet.createRow(i);
+
+            // Copy cells from source row to new row
+            for (int j = 0; j < sourceRow.getLastCellNum(); j++) {
+                Cell sourceCell = sourceRow.getCell(j);
+                if (sourceCell == null) {
+                    continue; // Skip null cells
+                }
+                Cell newCell = newRow.createCell(j, sourceCell.getCellType());
+
+                // Copy cell value based on type
+                switch (sourceCell.getCellType()) {
+                    case STRING:
+                        newCell.setCellValue(sourceCell.getStringCellValue());
+                        break;
+                    case NUMERIC:
+                        newCell.setCellValue(sourceCell.getNumericCellValue());
+                        break;
+                    case BOOLEAN:
+                        newCell.setCellValue(sourceCell.getBooleanCellValue());
+                        break;
+                    case FORMULA:
+                        newCell.setCellFormula(sourceCell.getCellFormula());
+                        break;
+                    case BLANK:
+                        // Do nothing for blank cells
+                        break;
+                    case ERROR:
+                        newCell.setCellErrorValue(sourceCell.getErrorCellValue());
+                        break;
+                    default:
+                        // Handle other cell types if necessary
+                        break;
+                }
+
+                // Copy cell style (optional, but good practice)
+                CellStyle newCellStyle = destinationWorkbook.createCellStyle();
+                newCellStyle.cloneStyleFrom(sourceCell.getCellStyle());
+                newCell.setCellStyle(newCellStyle);
+            }
+        }
+
+        // Write the destination workbook to a new file or overwrite the existing one
+        FileOutputStream fos = new FileOutputStream(destinationFilePath);
+        destinationWorkbook.write(fos);
+        fos.close();
+
+        // Close workbooks
+        sourceWorkbook.close();
+        destinationWorkbook.close();
+    }
+}
