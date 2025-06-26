@@ -1,0 +1,194 @@
+package June20;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.*;
+import org.apache.poi.util.IOUtils;
+import org.apache.poi.ss.util.CellRangeAddress;
+
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Iterator;
+import java.util.List;
+
+public class ExcelSheetCopier {
+
+    public static void copySheetWithAllContent(
+            String sourceFilePath, String destFilePath, String sourceSheetName, String destSheetName)
+            throws IOException {
+
+        FileInputStream fisSource = null;
+        FileInputStream fisDest = null;
+        FileOutputStream fosDest = null;
+
+        try {
+            fisSource = new FileInputStream(sourceFilePath);
+            XSSFWorkbook sourceWorkbook = new XSSFWorkbook(fisSource);
+            XSSFSheet sourceSheet = sourceWorkbook.getSheet(sourceSheetName);
+
+            if (sourceSheet == null) {
+                System.err.println("Error: Source sheet '" + sourceSheetName + "' not found in " + sourceFilePath);
+                return;
+            }
+
+            XSSFWorkbook destWorkbook;
+            try {
+                fisDest = new FileInputStream(destFilePath);
+                destWorkbook = new XSSFWorkbook(fisDest);
+            } catch (IOException e) {
+                System.out.println("Destination file not found or invalid, creating new workbook: " + destFilePath);
+                destWorkbook = new XSSFWorkbook();
+            } finally {
+                IOUtils.closeQuietly(fisDest);
+            }
+
+            int existingSheetIndex = destWorkbook.getSheetIndex(destSheetName);
+            if (existingSheetIndex != -1) {
+                System.out.println("Removing existing sheet '" + destSheetName + "' from destination workbook.");
+                destWorkbook.removeSheetAt(existingSheetIndex);
+            }
+
+            XSSFSheet destSheet = destWorkbook.createSheet(destSheetName);
+
+            System.out.println("Copying cell data and styles...");
+            copyRowsAndCells(sourceSheet, destSheet);
+
+            System.out.println("Copying merged regions...");
+            copyMergedRegions(sourceSheet, destSheet);
+
+            System.out.println("Copying images...");
+            copyImages(sourceSheet, destSheet, destWorkbook);
+
+            fosDest = new FileOutputStream(destFilePath);
+            destWorkbook.write(fosDest);
+
+            System.out.println("Sheet '" + sourceSheetName + "' successfully copied with basic content and images to '" + destSheetName + "' in " + destFilePath);
+
+            sourceWorkbook.close();
+            destWorkbook.close();
+
+        } finally {
+            IOUtils.closeQuietly(fisSource);
+            IOUtils.closeQuietly(fisDest);
+            IOUtils.closeQuietly(fosDest);
+        }
+    }
+
+    private static void copyRowsAndCells(XSSFSheet sourceSheet, XSSFSheet destSheet) {
+      
+        for (int rowNum = sourceSheet.getFirstRowNum(); rowNum <= sourceSheet.getLastRowNum(); rowNum++) {
+            XSSFRow sourceRow = sourceSheet.getRow(rowNum);
+            if (sourceRow == null) {
+                continue;
+            }
+            XSSFRow destRow = destSheet.createRow(rowNum);
+            destRow.setHeight(sourceRow.getHeight());
+
+            for (int cellNum = sourceRow.getFirstCellNum(); cellNum < sourceRow.getLastCellNum(); cellNum++) {
+                XSSFCell sourceCell = sourceRow.getCell(cellNum);
+                if (sourceCell == null) {
+                    continue;
+                }
+                XSSFCell destCell = destRow.createCell(cellNum);
+                copyCell(sourceCell, destCell);
+            }
+        }
+    }
+
+    private static void copyCell(XSSFCell sourceCell, XSSFCell destCell) {
+        XSSFCellStyle newCellStyle = (XSSFCellStyle) destCell.getSheet().getWorkbook().createCellStyle();
+        newCellStyle.cloneStyleFrom(sourceCell.getCellStyle());
+        destCell.setCellStyle(newCellStyle);
+
+        CellType cellType = sourceCell.getCellType();
+        switch (cellType) {
+            case STRING:
+                destCell.setCellValue(sourceCell.getStringCellValue());
+                break;
+            case NUMERIC:
+                if (DateUtil.isCellDateFormatted(sourceCell)) {
+                    destCell.setCellValue(sourceCell.getDateCellValue());
+                } else {
+                    destCell.setCellValue(sourceCell.getNumericCellValue());
+                }
+                break;
+            case BOOLEAN:
+                destCell.setCellValue(sourceCell.getBooleanCellValue());
+                break;
+            case FORMULA:
+                destCell.setCellFormula(sourceCell.getCellFormula());
+                break;
+            case BLANK:
+                break;
+            case ERROR:
+                destCell.setCellErrorValue(sourceCell.getErrorCellValue());
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static void copyMergedRegions(XSSFSheet sourceSheet, XSSFSheet destSheet) {
+        for (int i = 0; i < sourceSheet.getNumMergedRegions(); i++) {
+            CellRangeAddress mergedRegion = sourceSheet.getMergedRegion(i);
+            destSheet.addMergedRegion(mergedRegion);
+        }
+    }
+
+    private static void copyImages(XSSFSheet sourceSheet, XSSFSheet destSheet, XSSFWorkbook destWorkbook) throws IOException {
+        XSSFDrawing sourceDrawing = sourceSheet.getDrawingPatriarch();
+
+        if (sourceDrawing != null) {
+            XSSFDrawing destDrawing = destSheet.getDrawingPatriarch();
+            if (destDrawing == null) {
+                destDrawing = destSheet.createDrawingPatriarch();
+            }
+
+            List<XSSFShape> shapes = sourceDrawing.getShapes();
+            for (XSSFShape shape : shapes) {
+                if (shape instanceof XSSFPicture) {
+                    XSSFPicture sourcePicture = (XSSFPicture) shape;
+                    XSSFPictureData sourcePictureData = sourcePicture.getPictureData();
+                    XSSFClientAnchor sourceAnchor = (XSSFClientAnchor) sourcePicture.getAnchor();
+
+                    if (sourcePictureData == null || sourcePictureData.getData() == null) {
+                        System.err.println("Warning: Skipping picture due to missing image data at anchor: " +
+                                "(col1=" + sourceAnchor.getCol1() + ", row1=" + sourceAnchor.getRow1() + ")");
+                        continue;
+                    }
+
+                    byte[] imageBytes = sourcePictureData.getData();
+                    int pictureType = sourcePictureData.getPictureType();
+
+                    int pictureIdx = destWorkbook.addPicture(imageBytes, pictureType);
+
+                    XSSFClientAnchor destAnchor = new XSSFClientAnchor(
+                            sourceAnchor.getDx1(), sourceAnchor.getDy1(),
+                            sourceAnchor.getDx2(), sourceAnchor.getDy2(),
+                            sourceAnchor.getCol1(), sourceAnchor.getRow1(),
+                            sourceAnchor.getCol2(), sourceAnchor.getRow2()
+                    );
+                    destAnchor.setAnchorType(sourceAnchor.getAnchorType());
+
+                    XSSFPicture destPicture = destDrawing.createPicture(destAnchor, pictureIdx);
+
+                    System.out.println("Copied image from (Col1, Row1): (" + sourceAnchor.getCol1() + ", " + sourceAnchor.getRow1() + ")");
+
+                }
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+    	 String sourceFile = "";
+         String destFile = "";
+         String sourceSheet = "";
+         String destSheet = "";
+
+        try {
+            copySheetWithAllContent(sourceFile, destFile, sourceSheet, destSheet);
+        } catch (IOException e) {
+            System.err.println("An error occurred during sheet copying: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
