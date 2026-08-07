@@ -1,0 +1,80 @@
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+public class DeleteEmptyRows {
+
+    public static void main(String[] args) {
+        String filePath = "path/to/your/excel.xlsx"; // ⚠️ Replace with your file path
+        int headerRowIndex = 4; // Headers are in row 5, which is index 4
+
+        try {
+            // First pass: Delete empty rows and save the file
+            processAndSave(filePath, headerRowIndex);
+
+            // Reload the workbook to ensure a fresh, connected state
+            try (FileInputStream fis = new FileInputStream(filePath);
+                 Workbook workbook = new XSSFWorkbook(fis)) {
+                // You can perform further operations on the reloaded workbook here if needed
+                System.out.println("Empty rows have been successfully deleted and the file is updated.");
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void processAndSave(String filePath, int headerRowIndex) throws IOException {
+        try (FileInputStream fis = new FileInputStream(filePath);
+             Workbook workbook = new XSSFWorkbook(fis)) {
+
+            Sheet sheet = workbook.getSheetAt(0);
+
+            // Iterate backward to avoid issues with shifting row indices
+            for (int i = sheet.getLastRowNum(); i > headerRowIndex; i--) {
+                Row row = sheet.getRow(i);
+                if (isRowEmpty(row)) {
+                    sheet.removeRow(row);
+                    
+                    // Shift subsequent rows up to fill the gap
+                    if (i < sheet.getLastRowNum()) {
+                        sheet.shiftRows(i + 1, sheet.getLastRowNum(), -1);
+                    }
+                }
+            }
+
+            // Write the changes back to the file
+            try (FileOutputStream fos = new FileOutputStream(filePath)) {
+                workbook.write(fos);
+            }
+        }
+    }
+
+    private static boolean isRowEmpty(Row row) {
+        if (row == null || row.getLastCellNum() <= 0) {
+            return true;
+        }
+
+        // Iterate through all cells in the row
+        for (int cellNum = row.getFirstCellNum(); cellNum < row.getLastCellNum(); cellNum++) {
+            Cell cell = row.getCell(cellNum);
+            
+            // Check if cell is not null and not blank
+            if (cell != null && cell.getCellType() != CellType.BLANK) {
+                // If it's a string, check if it's not empty after trimming
+                if (cell.getCellType() == CellType.STRING) {
+                    if (!cell.getStringCellValue().trim().isEmpty()) {
+                        return false;
+                    }
+                } 
+                // For other cell types, the presence of the cell itself means it's not empty
+                else {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+}
